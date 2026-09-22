@@ -1,23 +1,42 @@
-import express from 'express';
+import express, { raw } from 'express';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 import argon2 from 'argon2';
 
-const DUMMY_HASH = '$argon2id$v=19$m=65536,p=4,t=3$iPRqnSosa5X9ELzwZUQ3MA$l1EMG4rEov6Xs+6XjUN44fw2kCFZK6Yep+xyXEVkeec';
+const DUMMY_HASH = process.env.DUMMY_HASH;
 
 const authRouter = express.Router();
 
-function generateJWT(sub) {
-	const header = {
-		"alg": "HS256",
-		"typ": "JWT"
-	}
-	const base64UrlEncodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
-
+function generateJWT(id) {
 	const payload = {
-		"sub": "",
-		"iat": "",
-		"exp": ""
+		"sub": id
+	}
+
+	const token = jwt.sign(
+		payload,
+		process.env.ACCESS_SECRET,
+		{
+			algorithm: 'HS256',
+			expiresIn: '15m'
+		}
+	);
+
+	return token;
+}
+
+async function generateRefreshToken(id) {
+	const jti = crypto.randomUUID();
+	const rawSecret = crypto.randomBytes(32).toString('hex');
+	const tokenHash = crypto.createHash('sha256').update(rawSecret).digest('hex');
+	const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+	try {
+		await pool.query('INSERT INTO refresh_tokens (jti, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)', [jti, id, tokenHash, expiresAt]);
+		return { jti, rawSecret };
+	} catch (err) {
+		console.error("Refresh token generation error:", err);
+		throw err;
 	}
 }
 
@@ -67,8 +86,10 @@ authRouter.post('/login', async (req, res) => {
 		}
 
 		const accessTokenJWT = generateJWT(user.id);
+		const { jti, rawSecret} = await generateRefreshToken(user.id);
+		const refreshToken = jti + "." + rawSecret;
 
-		return res.status(200).json({message: 'Login successful', id: user.id, email: user.email});
+		return res.status(200).json({message: 'Login successful', accessToken: accessTokenJWT, refreshToken: refreshToken, id: user.id, email: user.email});
 		
 	} catch (err) {
 		console.error('Login error:', err);
