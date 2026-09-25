@@ -10,7 +10,7 @@ export const requireAuth = (req, res, next) => {
 	const token = authHeader?.replace(/^Bearer\s+/i, '');
 
 	try {
-		const payload = jwt.verify(token, process.env.ACCESS_SECRET, { algorithms: ['HS256'] });
+		const payload = jwt.verify(token, process.env.ACCESS_SECRET, { algorithms: ['HS256'], requiredSpecClaims: ['exp'] });
 		req.userId = payload.sub;
 		
 		next();

@@ -1,10 +1,10 @@
-import express, { raw } from 'express';
+import express from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 import argon2 from 'argon2';
 
-const DUMMY_HASH = process.env.DUMMY_HASH;
+const DUMMY_HASH = await argon2.hash(crypto.randomBytes(16).toString('hex'));
 
 const authRouter = express.Router();
 
@@ -41,14 +41,22 @@ export async function generateRefreshToken(userId, { client = pool, expiresAt } 
 authRouter.post('/signup', async (req, res) => {
 	const { email, password } = req.body;
 
-	if (!email || !password) {
+	if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
 		return res.status(400).json({ error: 'Missing credentials' });
 	}
 
-	const hash = await argon2.hash(password);
+	const normalizedEmail = email.trim().toLowerCase();
+
+	let hash;
+	try {
+		hash = await argon2.hash(password);
+	} catch (err) {
+		console.error("Password hash error:", err);
+		return res.status(500).json({error: "Something went wrong. Please try again."});
+	}
 
 	try {
-		const result = await pool.query('INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email', [email, hash]);
+		const result = await pool.query('INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email', [normalizedEmail, hash]);
 		return res.status(201).json(result.rows[0]);
 	} catch (err) {
 		if (err.code === '23505') {
@@ -64,12 +72,14 @@ authRouter.post('/signup', async (req, res) => {
 authRouter.post('/login', async (req, res) => {
 	const { email, password } = req.body;
 
-	if (!email || !password) {
+	if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
 		return res.status(400).json({ error: 'Missing credentials' });
 	}
 
+	const normalizedEmail = email.trim().toLowerCase();
+
 	try {
-		const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+		const result = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
 
 		if (result.rows.length === 0) {
 			await argon2.verify(DUMMY_HASH, password);
