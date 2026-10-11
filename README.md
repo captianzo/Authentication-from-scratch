@@ -120,8 +120,8 @@ Missing or invalid token returns `401 Unauthorized`.
 
 ```bash
 # 1. Clone and install
-git clone <your-repo-url>
-cd <repo-name>
+git clone https://github.com/captianzo/Authentication-from-scratch.git
+cd Authentication-from-scratch
 npm install
 
 # 2. Start Postgres
